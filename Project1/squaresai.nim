@@ -6,18 +6,22 @@ type
 
    PuzzleState = ref object
       ## The object that represents the Puzzle
-      n, cost, hash: int
+      n, cost, depth: int
+      hash: Hash
       parent: PuzzleState
       action: PuzzleAction
       board: seq[int]
       children: seq[PuzzleState]
       blankRow, blankCol: int
 
-proc newPuzzleState(board: seq[int], n: int, parent: PuzzleState = nil, action = Initial, cost = 0): PuzzleState =
+var
+   solvedHash: Hash # Hash of the solved puzzle. Used in testGoal
+
+proc newPuzzleState(board: seq[int], n: int, parent: PuzzleState = nil, action = Initial, depth = 0): PuzzleState =
    assert n * n == len(board) and n >= 2, "the length of board is not correct!"
    new result
    result.n = n
-   result.cost = cost
+   result.depth = depth
    result.hash = hash(board)
    result.parent = parent
    result.action = action
@@ -40,6 +44,10 @@ proc `<`(self, other: PuzzleState): bool =
    self.cost < other.cost
 
 iterator childrenOf(self: PuzzleState): PuzzleState =
+   for i in 0 .. self.children.high:
+      yield self.children[i]
+
+iterator childrenOfRev(self: PuzzleState): PuzzleState =
    for i in countdown(self.children.high, 0):
       yield self.children[i]
 
@@ -56,8 +64,8 @@ proc display(self: PuzzleState) =
       var line = ""
       let offset = i * self.n
       for j in 0 ..< self.n:
+         if line.len > 0: line.add(", ")
          line.add(self.board[offset + j])
-         line.add(", ")
       echo line
 
 proc moveLeft(self: PuzzleState): PuzzleState =
@@ -68,7 +76,7 @@ proc moveLeft(self: PuzzleState): PuzzleState =
       let target = blankIndex - 1
       var newBoard = self.board
       swap(newBoard[blankIndex], newBoard[target])
-      result = newPuzzleState(newBoard, self.n, self, Left, self.cost + 1)
+      result = newPuzzleState(newBoard, self.n, self, Left, self.depth + 1)
 
 proc moveRight(self: PuzzleState): PuzzleState =
    if self.blankCol == self.n - 1:
@@ -78,7 +86,7 @@ proc moveRight(self: PuzzleState): PuzzleState =
       let target = blankIndex + 1
       var newBoard = self.board
       swap(newBoard[blankIndex], newBoard[target])
-      result = newPuzzleState(newBoard, self.n, self, Right, self.cost + 1)
+      result = newPuzzleState(newBoard, self.n, self, Right, self.depth + 1)
 
 proc moveUp(self: PuzzleState): PuzzleState =
    if self.blankRow == 0:
@@ -88,7 +96,7 @@ proc moveUp(self: PuzzleState): PuzzleState =
       let target = blankIndex - self.n
       var newBoard = self.board
       swap(newBoard[blankIndex], newBoard[target])
-      result = newPuzzleState(newBoard, self.n, self, Up, self.cost + 1)
+      result = newPuzzleState(newBoard, self.n, self, Up, self.depth + 1)
 
 proc moveDown(self: PuzzleState): PuzzleState =
    if self.blankRow == self.n - 1:
@@ -98,7 +106,7 @@ proc moveDown(self: PuzzleState): PuzzleState =
       let target = blankIndex + self.n
       var newBoard = self.board
       swap(newBoard[blankIndex], newBoard[target])
-      result = newPuzzleState(newBoard, self.n, self, Down, self.cost + 1)
+      result = newPuzzleState(newBoard, self.n, self, Down, self.depth + 1)
 
 proc expand(self: PuzzleState) =
    ## expand the node
@@ -134,20 +142,9 @@ proc writeOutput(path: seq[PuzzleAction], cost, nodes, depth, maxDepth: int, run
    finally:
       if succ: close(file)
 
-proc calculateTotalCost(state: PuzzleState): int =
-   ## calculate the total estimated cost of a state
-   discard
-
-proc calculateManhattanDist(idx, value, n: int): int =
-   ## calculatet the manhattan distance of a tile
-   discard
-
-proc testGoal(state: PuzzleState): bool =
+proc testGoal(state: PuzzleState): bool {.inline.} =
    ## test the state is the goal state or not
-   var solvedConf: seq[int]
-   for i in 0 ..< state.n * state.n:
-      solvedConf.add i   
-   hash(state) == hash(solvedConf)
+   hash(state) == solvedHash
 
 proc bfsSearch(initialState: PuzzleState): (PuzzleState, int, int) =
    ## BFS search
@@ -159,39 +156,15 @@ proc bfsSearch(initialState: PuzzleState): (PuzzleState, int, int) =
    var nodesExpanded = 0
    while frontier.len > 0:
       let state = frontier.popFirst()
-      if testGoal(state):
+      if testGoal(state): # todo: set the cost here, maybe...
          return (state, nodesExpanded, maxDepth)
       state.expand()
       nodesExpanded.inc
       for neighbor in childrenOf(state):
-         if neighbor.cost > maxDepth:
-            maxDepth = neighbor.cost
          if neighbor notin discovered:
+            maxDepth = max(neighbor.depth, maxDepth)
             frontier.addLast(neighbor)
             discovered.incl(neighbor)
-   result = (nil, nodesExpanded, maxDepth)
-
-proc bfsSearch2(initialState: PuzzleState): (PuzzleState, int, int) =
-   ## BFS search
-   var maxDepth = 0
-   var nodesExpanded = 0
-   var frontier = initDeque[PuzzleState]()
-   frontier.addLast(initialState)
-   var exploredUfrontier = initSet[PuzzleState]()
-   exploredUfrontier.incl(initialState)
-   while frontier.len > 0:
-      let state = frontier.popFirst()
-      exploredUfrontier.incl(state)
-      if testGoal(state):
-         return (state, nodesExpanded, maxDepth)
-      state.expand()
-      nodesExpanded.inc
-      for neighbor in childrenOf(state):
-         if neighbor.cost > maxDepth:
-            maxDepth = neighbor.cost
-         if neighbor notin exploredUfrontier:
-            frontier.addLast(neighbor)
-            exploredUfrontier.incl(neighbor)
    result = (nil, nodesExpanded, maxDepth)
 
 proc dfsSearch(initialState: PuzzleState): (PuzzleState, int, int) =
@@ -208,15 +181,14 @@ proc dfsSearch(initialState: PuzzleState): (PuzzleState, int, int) =
          return (state, nodesExpanded, maxDepth)
       state.expand()
       nodesExpanded.inc
-      for neighbor in childrenOf(state):
-         if neighbor.cost > maxDepth:
-            maxDepth = neighbor.cost
+      for neighbor in childrenOfRev(state):
          if neighbor notin discovered:
+            maxDepth = max(neighbor.depth, maxDepth)
             frontier.add(neighbor)
             discovered.incl(neighbor)
    result = (nil, nodesExpanded, maxDepth)
 
-proc dlsSearch(initialState: PuzzleState; limit = 50): (PuzzleState, int, int) =
+proc dlsSearch(initialState: PuzzleState; limit: Positive = 50): (PuzzleState, int, int) =
    ## DLS search
    var frontier = newSeq[PuzzleState]()
    frontier.add(initialState)
@@ -227,26 +199,24 @@ proc dlsSearch(initialState: PuzzleState; limit = 50): (PuzzleState, int, int) =
       let state = frontier.pop()
       if testGoal(state):
          return (state, nodesExpanded, maxDepth)
-      if state.cost <= limit:
+      if state.depth <= limit:
          state.expand()
          nodesExpanded.inc
-         for neighbor in childrenOf(state):
-            if neighbor.cost > maxDepth:
-               maxDepth = neighbor.cost
+         for neighbor in childrenOfRev(state):
             if neighbor notin discovered:
+               maxDepth = max(neighbor.depth, maxDepth)
                discovered.incl(neighbor)
                frontier.add(neighbor)
    result = (nil, nodesExpanded, maxDepth)
 
-proc idsSearch(initialState: PuzzleState; maxLimit = 50): (PuzzleState, int, int) =
+proc idsSearch(initialState: PuzzleState; maxLimit: Positive = 50): (PuzzleState, int, int) =
    ## IDS search
    var maxDepth = 0
    var nodesExpanded = 0
    for i in 1 .. maxLimit:
-      let (finalState, tNodesExpanded, tMaxDepth) = dlsSearch(initialState, i)
-      nodesExpanded += tNodesExpanded
-      if tMaxDepth > maxDepth:
-         maxDepth = tMaxDepth
+      let (finalState, relNodesExpanded, relMaxDepth) = dlsSearch(initialState, i)
+      nodesExpanded += relNodesExpanded
+      maxDepth = max(relMaxDepth, maxDepth)
       if finalState != nil:
          return (finalState, nodesExpanded, maxDepth)
    result = (nil, nodesExpanded, maxDepth)
@@ -266,45 +236,121 @@ proc ucsSearch(initialState: PuzzleState): (PuzzleState, int, int) =
       state.expand()
       nodesExpanded.inc
       for neighbor in childrenOf(state):
-         if neighbor.cost > maxDepth:
-            maxDepth = neighbor.cost
          if neighbor notin discovered:
+            maxDepth = max(neighbor.depth, maxDepth)
+            neighbor.cost = neighbor.depth # Is it a hack? I don't think sooo...
             frontier.push(neighbor)
             discovered.incl(neighbor)
    result = (nil, nodesExpanded, maxDepth)
 
+proc manhattanDist(idx, value, n: int): int =
+   ## calculatet the manhattan distance of a tile
+   result = abs(idx div n - value div n) + abs(idx mod n - value mod n)
+
+proc calculateTotalCost(state: PuzzleState): int =
+   ## calculate the total estimated cost of a state
+   result = state.depth
+   for i in 1 ..< state.board.len:
+      result += manhattanDist(i, state.board[i], state.n)
+
 proc aStarSearch(initialState: PuzzleState): (PuzzleState, int, int) =
    ## A* search
-   discard
+   var frontier = newHeapQueue[PuzzleState]()
+   frontier.push(initialState)
+   var discovered = initSet[PuzzleState]()
+   discovered.incl(initialState)
+   var maxDepth = 0
+   var nodesExpanded = 0
+   while frontier.len > 0:
+      let state = frontier.pop()
+      if testGoal(state):
+         return (state, nodesExpanded, maxDepth)
+      state.expand()
+      nodesExpanded.inc
+      for neighbor in childrenOf(state):
+         if neighbor notin discovered:
+            maxDepth = max(neighbor.depth, maxDepth)
+            neighbor.cost = neighbor.calculateTotalCost()
+            frontier.push(neighbor)
+            discovered.incl(neighbor)
+   result = (nil, nodesExpanded, maxDepth)
+
+proc blsSearch(initialState: PuzzleState; bound: var int): (PuzzleState, int, int) =
+   ## BLS search
+   var frontier = newHeapQueue[PuzzleState]()
+   frontier.push(initialState)
+   var discovered = initSet[PuzzleState]()
+   discovered.incl(initialState)
+   var maxDepth = 0
+   var nodesExpanded = 0
+   while frontier.len > 0:
+      let state = frontier.pop()
+      if testGoal(state):
+         return (state, nodesExpanded, maxDepth)
+      if state.cost <= bound:
+         state.expand()
+         nodesExpanded.inc
+         for neighbor in childrenOf(state):
+            if neighbor notin discovered:
+               maxDepth = max(neighbor.depth, maxDepth)
+               neighbor.cost = neighbor.calculateTotalCost()
+               frontier.push(neighbor)
+               discovered.incl(neighbor)
+      else:
+         bound = state.cost
+   result = (nil, nodesExpanded, maxDepth)
+
+proc idAStarSearch(initialState: PuzzleState; maxBound: Positive = 100): (PuzzleState, int, int) =
+   ## IDA* search
+   var maxDepth = 0
+   var nodesExpanded = 0
+   var bound = initialState.calculateTotalCost()
+   while bound < maxBound:
+      let (finalState, relNodesExpanded, relMaxDepth) = blsSearch(initialState, bound)
+      nodesExpanded += relNodesExpanded
+      maxDepth = max(relMaxDepth, maxDepth)
+      if finalState != nil:
+         return (finalState, nodesExpanded, maxDepth)
+   result = (nil, nodesExpanded, maxDepth)
 
 proc main() =
    # Main Function that reads in Input and Runs corresponding Algorithm
    let sm = paramStr(1).toLowerAscii()
-   var beginState = newSeq[int]()
+   var beginState: seq[int] = @[]
    for num in paramStr(2).split(","):
       beginState.add parseInt(num)
    let size = sqrt(beginState.len.float).int
+   # Write to global solvedHash
+   var solvedConf: seq[int]
+   for i in 0 ..< beginState.len:
+      solvedConf.add i
+   solvedHash = hash(solvedConf)
+   # Timer starts now!
    let startTime = epochTime()
    let hardState = newPuzzleState(beginState, size)
    let (finalState, nodesExpanded, maxDepth) = 
-      if sm == "bfs":
-         bfsSearch2(hardState)
-      elif sm == "dfs":
+      case sm
+      of "bfs":
+         bfsSearch(hardState)
+      of "dfs":
          dfsSearch(hardState)
-      elif sm == "dls":
+      of "dls":
          dlsSearch(hardState)
-      elif sm == "ids":
+      of "ids":
          idsSearch(hardState)
-      elif sm == "ucs":
+      of "ucs":
          ucsSearch(hardState)
-      elif sm == "ast":
+      of "ast":
          aStarSearch(hardState)
+      of "ida":
+         idAStarSearch(hardState)
       else:
          quit("Enter valid command arguments!")
    let runningTime = epochTime() - startTime
    let ram = getOccupiedMem() / 1024
    if finalState != nil:
-      let depthAndCost = finalState.cost
+      let depthAndCost = finalState.depth
+      display finalState
       let path = finalState.getSolution()
       writeOutput(path, depthAndCost, nodesExpanded, depthAndCost, maxDepth, runningTime, ram)
    else:
