@@ -1,4 +1,6 @@
-import math, deques, heapqueue, sets, hashes, algorithm, strutils, strformat, times, os
+import
+   std / [math, deques, heapqueue, sets, hashes, algorithm,
+   strutils, strformat, times, os, sugar]
 
 type
    PuzzleAction = enum
@@ -17,16 +19,12 @@ type
 var
    solvedHash: Hash # Hash of the solved puzzle. Used in testGoal
 
-proc newPuzzleState(board: seq[int], n: int, parent: PuzzleState = nil, action = Initial, depth = 0): PuzzleState =
-   assert n * n == len(board) and n >= 2, "the length of board is not correct!"
-   new result
-   result.n = n
-   result.depth = depth
-   result.hash = hash(board)
-   result.parent = parent
-   result.action = action
-   shallowCopy result.board, board
-   result.children = @[]
+proc newPuzzleState(board: sink seq[int], n: int, parent: PuzzleState = nil,
+      action = Initial, depth = 0): PuzzleState =
+   assert n * n == len(board) and n >= 2,
+      "the length of board is not correct!"
+   result = PuzzleState(n: n, depth: depth, hash: hash(board),
+      parent: parent, action: action, board: board)
    for i, item in result.board:
       if item == 0:
          result.blankRow = i div result.n
@@ -125,7 +123,8 @@ proc expand(self: PuzzleState) =
       if rightChild != nil:
          self.children.add(rightChild)
 
-proc writeOutput(path: seq[PuzzleAction], cost, nodes, depth, maxDepth: int, runningTime, maxRam: float) =
+proc writeOutput(path: seq[PuzzleAction], cost, nodes, depth, maxDepth: int,
+      runningTime, maxRam: float) =
    ## Function that Writes to output.txt
    var file: File
    var succ = false
@@ -150,7 +149,7 @@ proc bfsSearch(initialState: PuzzleState): (PuzzleState, int, int) =
    ## BFS search
    var frontier = initDeque[PuzzleState]()
    frontier.addLast(initialState)
-   var discovered = initSet[PuzzleState]()
+   var discovered = initHashSet[PuzzleState]()
    discovered.incl(initialState)
    var maxDepth = 0
    var nodesExpanded = 0
@@ -171,7 +170,7 @@ proc dfsSearch(initialState: PuzzleState): (PuzzleState, int, int) =
    ## DFS search
    var frontier = newSeq[PuzzleState]()
    frontier.add(initialState)
-   var discovered = initSet[PuzzleState]()
+   var discovered = initHashSet[PuzzleState]()
    discovered.incl(initialState)
    var maxDepth = 0
    var nodesExpanded = 0
@@ -188,11 +187,12 @@ proc dfsSearch(initialState: PuzzleState): (PuzzleState, int, int) =
             discovered.incl(neighbor)
    result = (nil, nodesExpanded, maxDepth)
 
-proc dlsSearch(initialState: PuzzleState; limit: Positive = 50): (PuzzleState, int, int) =
+proc dlsSearch(initialState: PuzzleState; limit: Positive = 50): (PuzzleState,
+      int, int) =
    ## DLS search
    var frontier = newSeq[PuzzleState]()
    frontier.add(initialState)
-   var discovered = initSet[PuzzleState]()
+   var discovered = initHashSet[PuzzleState]()
    var maxDepth = 0
    var nodesExpanded = 0
    while frontier.len > 0:
@@ -209,12 +209,14 @@ proc dlsSearch(initialState: PuzzleState; limit: Positive = 50): (PuzzleState, i
                frontier.add(neighbor)
    result = (nil, nodesExpanded, maxDepth)
 
-proc idsSearch(initialState: PuzzleState; maxLimit: Positive = 50): (PuzzleState, int, int) =
+proc idsSearch(initialState: PuzzleState; maxLimit: Positive = 50): (
+      PuzzleState, int, int) =
    ## IDS search
    var maxDepth = 0
    var nodesExpanded = 0
    for i in 1 .. maxLimit:
-      let (finalState, relNodesExpanded, relMaxDepth) = dlsSearch(initialState, i)
+      let (finalState, relNodesExpanded, relMaxDepth) = dlsSearch(
+            initialState, i)
       nodesExpanded += relNodesExpanded
       maxDepth = max(relMaxDepth, maxDepth)
       if finalState != nil:
@@ -225,7 +227,7 @@ proc ucsSearch(initialState: PuzzleState): (PuzzleState, int, int) =
    ## UCS search
    var frontier = newHeapQueue[PuzzleState]()
    frontier.push(initialState)
-   var discovered = initSet[PuzzleState]()
+   var discovered = initHashSet[PuzzleState]()
    discovered.incl(initialState)
    var maxDepth = 0
    var nodesExpanded = 0
@@ -244,7 +246,7 @@ proc ucsSearch(initialState: PuzzleState): (PuzzleState, int, int) =
    result = (nil, nodesExpanded, maxDepth)
 
 proc manhattanDist(idx, value, n: int): int =
-   ## calculatet the manhattan distance of a tile
+   ## calculate the manhattan distance of a tile
    result = abs(idx div n - value div n) + abs(idx mod n - value mod n)
 
 proc calculateTotalCost(state: PuzzleState): int =
@@ -255,9 +257,9 @@ proc calculateTotalCost(state: PuzzleState): int =
 
 proc aStarSearch(initialState: PuzzleState): (PuzzleState, int, int) =
    ## A* search
-   var frontier = newHeapQueue[PuzzleState]()
+   var frontier = initHeapQueue[PuzzleState]()
    frontier.push(initialState)
-   var discovered = initSet[PuzzleState]()
+   var discovered = initHashSet[PuzzleState]()
    discovered.incl(initialState)
    var maxDepth = 0
    var nodesExpanded = 0
@@ -275,11 +277,12 @@ proc aStarSearch(initialState: PuzzleState): (PuzzleState, int, int) =
             discovered.incl(neighbor)
    result = (nil, nodesExpanded, maxDepth)
 
-proc blsSearch(initialState: PuzzleState; bound: var int): (PuzzleState, int, int) =
+proc blsSearch(initialState: PuzzleState; bound: var int): (PuzzleState, int,
+      int) =
    ## BLS search
-   var frontier = newHeapQueue[PuzzleState]()
+   var frontier = initHeapQueue[PuzzleState]()
    frontier.push(initialState)
-   var discovered = initSet[PuzzleState]()
+   var discovered = initHashSet[PuzzleState]()
    discovered.incl(initialState)
    var maxDepth = 0
    var nodesExpanded = 0
@@ -300,13 +303,15 @@ proc blsSearch(initialState: PuzzleState; bound: var int): (PuzzleState, int, in
          bound = state.cost
    result = (nil, nodesExpanded, maxDepth)
 
-proc idAStarSearch(initialState: PuzzleState; maxBound: Positive = 100): (PuzzleState, int, int) =
+proc idAStarSearch(initialState: PuzzleState; maxBound: Positive = 100): (
+      PuzzleState, int, int) =
    ## IDA* search
    var maxDepth = 0
    var nodesExpanded = 0
    var bound = initialState.calculateTotalCost()
    while bound < maxBound:
-      let (finalState, relNodesExpanded, relMaxDepth) = blsSearch(initialState, bound)
+      let (finalState, relNodesExpanded, relMaxDepth) = blsSearch(
+            initialState, bound)
       nodesExpanded += relNodesExpanded
       maxDepth = max(relMaxDepth, maxDepth)
       if finalState != nil:
@@ -316,7 +321,7 @@ proc idAStarSearch(initialState: PuzzleState; maxBound: Positive = 100): (Puzzle
 proc main() =
    # Main Function that reads in Input and Runs corresponding Algorithm
    let sm = paramStr(1).toLowerAscii()
-   var beginState: seq[int] = @[]
+   var beginState: seq[int]
    for num in paramStr(2).split(","):
       beginState.add parseInt(num)
    let size = sqrt(beginState.len.float).int
@@ -328,7 +333,7 @@ proc main() =
    # Timer starts now!
    let startTime = epochTime()
    let hardState = newPuzzleState(beginState, size)
-   let (finalState, nodesExpanded, maxDepth) = 
+   let (finalState, nodesExpanded, maxDepth) =
       case sm
       of "bfs":
          bfsSearch(hardState)
@@ -352,7 +357,8 @@ proc main() =
       let depthAndCost = finalState.depth
       display finalState
       let path = finalState.getSolution()
-      writeOutput(path, depthAndCost, nodesExpanded, depthAndCost, maxDepth, runningTime, ram)
+      writeOutput(path, depthAndCost, nodesExpanded, depthAndCost, maxDepth,
+            runningTime, ram)
    else:
       quit("Failed to find solution!")
 
